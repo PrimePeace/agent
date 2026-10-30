@@ -4,6 +4,8 @@
 
 服务不调用外部大模型，也不需要 API Key。每个角色按自己的方法论，把需求原文整理成可复现的交付物：问题简报、方案对比、后端结构、接口契约、页面、测试、发布方案和讲解。宿主里的模型拿到这些产物后继续写业务代码。
 
+每个技能的知识库是 `skills/<技能名>/SKILL.md`，里面写着该角色的判断规则、示例和自检清单。改 Markdown 即可调整角色行为，下一次调用生效，不用改代码、不用重启。
+
 ## 为什么是一个服务里的八个工具
 
 | 方案 | 复杂度 | 单独调用 | 交接 | 结论 |
@@ -55,16 +57,29 @@ flowchart LR
 | `run_workflow` | 从某一位开始跑完整环 |
 | `resume_workflow` | 补充信息或提高步数后继续 |
 | `get_workflow` | 读取会话 |
+| `invoke_skill` | 按技能 id 调用，新增的技能不用重连就能用 |
 
-单独调用不会创建会话，也不会自动进入下一位。产物字段保持 camelCase，例如 `clarityScore`、`idempotentWrites`、`sessionId`。
+单独调用不会创建会话，也不会自动进入下一位。产物字段保持 camelCase，例如 `clarityScore`、`idempotentWrites`、`sessionId`。单独调用的返回里带 `knowledge` 和 `knowledgePath`；工作流返回里带 `skillKnowledge`，宿主实现代码时按这些知识库来。
 
 ## 技能知识库
 
-每个技能是 `skills/` 下一个文件夹。`SKILL.md` 是知识库，`agent.py` 可选。
+每个技能是 `skills/` 下一个文件夹。`SKILL.md` 是知识库，`agent.py` 可选：
 
-改 `SKILL.md` 后，下一次调用就会读到新内容，不用重启。新建文件夹就是新增技能：`ring: false` 只单独调用，`ring: true` 按 `order` 插进交接环。内置角色的顺序是 10 到 80，中间可以插入，例如 35。
+```text
+skills/
+  problem_clarifier/SKILL.md   判断需求能否执行的四步、盲区问题表、反例
+  solution_designer/SKILL.md   单体与微服务的选型信号表、一致性三种写法
+  backend_architect/SKILL.md   模块职责、状态机示例、错误码表、安全底线
+  api_developer/SKILL.md       标准端点表、幂等键的服务端实现、分页规则
+  web_app_builder/SKILL.md     三页起步、页面状态规则、幂等键在表单上的用法
+  tdd_engineer/SKILL.md        必备用例、测试金字塔、退回条件
+  deployment_engineer/SKILL.md 流水线五阶段、策略选择表、数据库两步变更、告警表
+  programming_mentor/SKILL.md  三档讲解深度、练习出题原则
+```
 
-没有 `agent.py` 的新技能，会把 Markdown 交给 Cursor 里的模型，由它按文档处理。放入 `agent.py` 并定义 `execute(context)` 后，用脚本的返回值代替内置规则。脚本约定和示例见 `skills/README.md`。
+改 `SKILL.md` 后，下一次调用就会读到新内容，不用重启。每份末尾留有「补充规则」小节，直接往里加条目。
+
+新建文件夹就是新增技能：`ring: false` 只单独调用，`ring: true` 按 `order` 插进交接环。内置角色的顺序是 10 到 80，中间可以插入，例如 35。没有 `agent.py` 的新技能，会把 Markdown 交给 Cursor 里的模型，由它按文档处理。放入 `agent.py` 并定义 `execute(context)` 后，用脚本的返回值代替内置规则。脚本约定和示例见 `skills/README.md`。
 
 新增文件夹后，立刻可以用 `invoke_skill`，`skillId` 填文件夹名。要在工具列表里看到同名工具，重连一次 MCP。全局配置里的 `PROGRAMMER_SKILLS_DIR` 指向这个目录，所以换一个项目打开也是同一套知识库。
 
@@ -123,7 +138,7 @@ Cursor 项目配置在 `.cursor/mcp.json`，指向虚拟环境里的解释器。
 .\.venv\Scripts\python.exe scripts\smoke_mcp.py
 ```
 
-覆盖完整环、从任意角色绕回、需求过短时等待、补充后继续、方案退回一次、仅后端跳过网页、高峰值推荐微服务、会话重启后仍能读取，以及工具层的业务错误。冒烟脚本会握手、确认 12 个工具，并检查「用户可以创建订单」里的资源是订单。
+覆盖完整环、从任意角色绕回、需求过短时等待、补充后继续、方案退回一次、仅后端跳过网页、高峰值推荐微服务、会话重启后仍能读取、工具层的业务错误，以及技能知识库：改 Markdown 下一次调用生效、新技能可插环、`agent.py` 热替换。冒烟脚本会握手、列出全部工具，并检查「用户可以创建订单」里的资源是订单。
 
 ## 部署与观察
 
