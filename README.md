@@ -1,10 +1,45 @@
 # 程序员工作流 MCP
 
-一个 Python stdio MCP 服务，对应「程序员」这一组技能。八个角色各做一件事，可以单独调用，也可以沿交接环把上一任的产物交给下一位，绕回入口即结束。
+一个 Python stdio MCP 服务。八个角色各做一件事：可以单独调用，也可以沿交接环把上一任产物交给下一位，绕回入口即结束。
 
-服务不调用外部大模型，也不需要 API Key。每个角色按自己的方法论，把需求原文整理成可复现的交付物：问题简报、方案对比、后端结构、接口契约、页面、测试、发布方案和讲解。宿主里的模型拿到这些产物后继续写业务代码。
+仓库：https://github.com/PrimePeace/agent
 
-每个技能的知识库是 `skills/<技能名>/SKILL.md`，里面写着该角色的判断规则、示例和自检清单。改 Markdown 即可调整角色行为，下一次调用生效，不用改代码、不用重启。
+服务不调用外部大模型，也不需要 API Key。每个角色按自己的方法论，把需求原文整理成可复现的交付物。Cursor 里的模型再按这些产物写业务代码。
+
+每个角色的判断规则写在 `skills/<技能名>/SKILL.md`。改 Markdown 即可调整行为，下一次调用生效，不用改代码、不用重启。
+
+## 在 Cursor 里怎么用
+
+1. 安装依赖并保持虚拟环境：
+
+```powershell
+py -3.13 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+```
+
+2. 在 Cursor 的 MCP 设置里启用 `programmer-workflow`。项目配置在 `.cursor/mcp.json`。要在任意项目里都能用，把同一段写进用户级 `~/.cursor/mcp.json`，并把路径改成你本机的绝对路径。
+3. 重连服务。工具列表应出现 13 个工具（8 个角色 + `run_workflow` / `resume_workflow` / `get_workflow` / `list_agents` / `invoke_skill`）。
+4. 新开一轮对话，把需求写清楚，并点名工具。
+
+整环：
+
+```text
+使用 run_workflow。需求：用户可以创建订单并查询订单状态。需要登录。峰值 500 QPS，下单接口 P99 200 毫秒以内，订单数据强一致。仅后端，不要前端。
+```
+
+只做一个人：
+
+```text
+使用 problem_clarifier。需求：用户可以创建订单并查询订单状态。需要登录。峰值 500 QPS。仅后端。
+```
+
+新加的技能还没出现在工具列表里时：
+
+```text
+使用 invoke_skill。skillId 是 my_reviewer。需求：……
+```
+
+需求太短会停在 `WAITING_FOR_USER`。把返回的 `sessionId` 带上，再用 `resume_workflow` 补充。不要把密钥、口令或生产数据写进 demand。
 
 ## 为什么是一个服务里的八个工具
 
@@ -45,7 +80,7 @@ flowchart LR
 
 | 工具 | 作用 |
 | --- | --- |
-| `list_agents` | 查看八个角色的职责和环 |
+| `list_agents` | 查看角色、职责、交接环和技能目录 |
 | `problem_clarifier` | 只做问题梳理 |
 | `solution_designer` | 只做方案对比 |
 | `backend_architect` | 只做后端结构 |
@@ -57,31 +92,35 @@ flowchart LR
 | `run_workflow` | 从某一位开始跑完整环 |
 | `resume_workflow` | 补充信息或提高步数后继续 |
 | `get_workflow` | 读取会话 |
-| `invoke_skill` | 按技能 id 调用，新增的技能不用重连就能用 |
+| `invoke_skill` | 按技能 id 调用，新增技能不用重连就能用 |
 
 单独调用不会创建会话，也不会自动进入下一位。产物字段保持 camelCase，例如 `clarityScore`、`idempotentWrites`、`sessionId`。单独调用的返回里带 `knowledge` 和 `knowledgePath`；工作流返回里带 `skillKnowledge`，宿主实现代码时按这些知识库来。
 
 ## 技能知识库
 
-每个技能是 `skills/` 下一个文件夹。`SKILL.md` 是知识库，`agent.py` 可选：
+每个技能是 `skills/` 下一个文件夹。`SKILL.md` 是知识库，`agent.py` 可选。进程每次调用都会重新读文件。
 
-```text
-skills/
-  problem_clarifier/SKILL.md   判断需求能否执行的四步、盲区问题表、反例
-  solution_designer/SKILL.md   单体与微服务的选型信号表、一致性三种写法
-  backend_architect/SKILL.md   模块职责、状态机示例、错误码表、安全底线
-  api_developer/SKILL.md       标准端点表、幂等键的服务端实现、分页规则
-  web_app_builder/SKILL.md     三页起步、页面状态规则、幂等键在表单上的用法
-  tdd_engineer/SKILL.md        必备用例、测试金字塔、退回条件
-  deployment_engineer/SKILL.md 流水线五阶段、策略选择表、数据库两步变更、告警表
-  programming_mentor/SKILL.md  三档讲解深度、练习出题原则
-```
+| 技能 | 知识库现在写了什么 |
+| --- | --- |
+| `problem_clarifier` | 四步判断需求能否执行；盲区问题表；不替用户猜范围的反例 |
+| `solution_designer` | 单体 / 微服务选型信号表；一致性三种写法；禁止两阶段提交 |
+| `backend_architect` | 模块职责；状态机与乐观锁；错误码表；安全底线 |
+| `api_developer` | 标准端点表；幂等键先插后读；cursor 分页 |
+| `web_app_builder` | 三页起步；页面只保留草稿和错误码；表单上的幂等键 |
+| `tdd_engineer` | 五条必备用例；测试金字塔；幂等缺失时退回一次 |
+| `deployment_engineer` | 五段流水线；蓝绿 / 滚动对照；库变更两步走；告警表 |
+| `programming_mentor` | 三档讲解深度；练习必须覆盖失败路径、幂等和回滚 |
 
-改 `SKILL.md` 后，下一次调用就会读到新内容，不用重启。每份末尾留有「补充规则」小节，直接往里加条目。
+改 `SKILL.md` 后，下一次调用就会读到新内容。每份末尾留有「补充规则」，直接往里加条目。
 
-新建文件夹就是新增技能：`ring: false` 只单独调用，`ring: true` 按 `order` 插进交接环。内置角色的顺序是 10 到 80，中间可以插入，例如 35。没有 `agent.py` 的新技能，会把 Markdown 交给 Cursor 里的模型，由它按文档处理。放入 `agent.py` 并定义 `execute(context)` 后，用脚本的返回值代替内置规则。脚本约定和示例见 `skills/README.md`。
+新建文件夹就是新增技能：
 
-新增文件夹后，立刻可以用 `invoke_skill`，`skillId` 填文件夹名。要在工具列表里看到同名工具，重连一次 MCP。全局配置里的 `PROGRAMMER_SKILLS_DIR` 指向这个目录，所以换一个项目打开也是同一套知识库。
+- `ring: false`：只单独调用，不进原来的八步环。
+- `ring: true`：按 `order` 插进交接环。内置角色的顺序是 10 到 80，中间可以插入，例如 35。
+- 没有 `agent.py`：把 Markdown 交给 Cursor 里的模型，由它按文档处理。
+- 有 `agent.py` 并定义 `execute(context)`：用脚本的返回值代替内置规则。
+
+脚本约定和示例见 [skills/README.md](skills/README.md)。新增文件夹后立刻可以用 `invoke_skill`。要在工具列表里看到同名工具，重连一次 MCP。
 
 ## 运行
 
@@ -91,14 +130,21 @@ skills/
 py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
 $env:PYTHONIOENCODING = "utf-8"
+$env:PROGRAMMER_SKILLS_DIR = "E:\ai-java\Agent\skills"
 .\.venv\Scripts\python.exe -m programmer_workflow
 ```
 
-标准输出只传输 MCP 帧。日志在标准错误。会话目录默认是 `./data/workflows`，可用环境变量 `WORKFLOW_DATA_DIR` 改掉。目录已在 `.gitignore` 里。
+标准输出只传输 MCP 帧。日志在标准错误。
 
-Cursor 项目配置在 `.cursor/mcp.json`，指向虚拟环境里的解释器。改完代码后在 Cursor 里重连这个 MCP 服务。
+| 环境变量 | 默认值 | 作用 |
+| --- | --- | --- |
+| `WORKFLOW_DATA_DIR` | `./data/workflows` | 会话 JSON 目录。已在 `.gitignore` 里 |
+| `PROGRAMMER_SKILLS_DIR` | 仓库里的 `skills/` | 技能知识库目录 |
+| `PYTHONIOENCODING` | 建议 `utf-8` | 避免 Windows 下中文协议帧乱码 |
 
-调用示例：
+Cursor 改完服务代码后需要重连 MCP。只改 `SKILL.md` 或 `agent.py` 不用重连。
+
+调用 `run_workflow` 的参数示例：
 
 ```json
 {
