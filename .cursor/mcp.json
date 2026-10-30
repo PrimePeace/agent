@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "programmer-workflow": {
+      "command": "E:/ai-java/Agent/.venv/Scripts/python.exe",
+      "args": ["-m", "programmer_workflow"],
+      "env": {
+        "WORKFLOW_DATA_DIR": "E:/ai-java/Agent/data/workflows",
+        "PROGRAMMER_SKILLS_DIR": "E:/ai-java/Agent/skills",
+        "PYTHONIOENCODING": "utf-8"
+      }
+    }
+  }
+}
